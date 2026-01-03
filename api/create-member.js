@@ -13,6 +13,34 @@ function getBearerToken(req) {
   return match ? match[1] : null;
 }
 
+function validateServerEnv({ supabaseUrl, serviceRoleKey }) {
+  if (!supabaseUrl || !serviceRoleKey) {
+    return {
+      ok: false,
+      status: 500,
+      error:
+        "Server is missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY env vars.",
+      missing: {
+        SUPABASE_URL: !supabaseUrl,
+        SUPABASE_SERVICE_ROLE_KEY: !serviceRoleKey,
+      },
+    };
+  }
+
+  // Common Vercel misconfig: putting the publishable/anon key here.
+  // Server endpoints need the secret/service_role key to bypass RLS.
+  if (String(serviceRoleKey).startsWith("sb_publishable_")) {
+    return {
+      ok: false,
+      status: 500,
+      error:
+        "SUPABASE_SERVICE_ROLE_KEY is set to a publishable key. Use the secret/service_role key (sb_secret_... or the older JWT-style service_role key) and redeploy.",
+    };
+  }
+
+  return { ok: true };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -21,19 +49,12 @@ export default async function handler(req, res) {
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
+  const envCheck = validateServerEnv({ supabaseUrl, serviceRoleKey });
+  if (!envCheck.ok) {
     const isVercel = Boolean(process.env.VERCEL);
-    return json(res, 500, {
-      error:
-        "Server is missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY env vars.",
-      ...(isVercel
-        ? {}
-        : {
-            missing: {
-              SUPABASE_URL: !supabaseUrl,
-              SUPABASE_SERVICE_ROLE_KEY: !serviceRoleKey,
-            },
-          }),
+    return json(res, envCheck.status ?? 500, {
+      error: envCheck.error,
+      ...(isVercel || !envCheck.missing ? {} : { missing: envCheck.missing }),
     });
   }
 
