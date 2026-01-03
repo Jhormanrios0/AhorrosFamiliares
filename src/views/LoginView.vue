@@ -49,7 +49,7 @@ async function onSubmit() {
 
   if (!isSupabaseConfigured) {
     error.value =
-      "Faltan variables de entorno de Supabase. Crea .env.local con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.";
+      "Faltan variables de entorno de Supabase. En local, crea .env.local con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. En Vercel, agrégalas en Settings → Environment Variables y vuelve a desplegar (Redeploy).";
     return;
   }
 
@@ -267,12 +267,16 @@ async function onSubmit() {
           <div v-if="showMissingEnv" class="alert error">
             <div class="alert-title">Falta configuración de Supabase</div>
             <div class="muted">
-              Crea un archivo <strong>.env.local</strong> con:
+              En local, crea <strong>.env.local</strong> con:
             </div>
             <pre class="codebox">
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...</pre
             >
+            <div class="muted" style="margin-top: 10px">
+              En Vercel: Settings → Environment Variables → agrega esas mismas
+              variables (Key/Value) y luego Redeploy.
+            </div>
             <div class="muted">
               Los valores están en Supabase → Project Settings → API.
             </div>
