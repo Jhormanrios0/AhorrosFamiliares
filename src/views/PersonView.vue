@@ -12,7 +12,6 @@ import {
   fetchMetaOverridesForYear,
   getYearRange,
   groupAportesByMonth,
-  monthsLeftInYear,
   normalizeFrequency,
   SAVINGS_TOTAL,
   yearFromISODate,
@@ -85,10 +84,19 @@ const percent = computed(() => {
 const restante = computed(() =>
   Math.max(0, (metaAnual.value ?? 0) - total.value)
 );
-const monthsLeft = computed(() => monthsLeftInYear(range.value.year));
-const sugeridoMensual = computed(() => {
-  const m = monthsLeft.value || 1;
-  return Math.ceil(restante.value / m);
+
+const nextPayment = computed(() => {
+  const now = new Date();
+  const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+  const done = aportesDatesSet.value;
+  const upcoming = plan.value.filter(
+    (p) => p.date >= today && !done.has(p.date)
+  );
+  if (upcoming.length > 0) return upcoming[0];
+  const unpaid = plan.value.filter((p) => !done.has(p.date));
+  return unpaid[0] ?? null;
 });
 
 const aportesPorMes = computed(() => groupAportesByMonth(aportes.value));
@@ -331,8 +339,13 @@ onMounted(load);
             <div class="stat-value">{{ formatCLP(restante) }}</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Aporte sugerido / mes</div>
-            <div class="stat-value">{{ formatCLP(sugeridoMensual) }}</div>
+            <div class="stat-label">Próxima fecha de pago</div>
+            <div class="stat-value">
+              {{ nextPayment ? formatShortDate(nextPayment.date) : "—" }}
+            </div>
+            <div v-if="nextPayment" class="muted" style="font-size: 0.85rem">
+              {{ formatCLP(nextPayment.amount) }}
+            </div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Frecuencia</div>

@@ -35,12 +35,6 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
-      path: "/persona/nueva",
-      name: "add-person",
-      component: () => import("@/views/AddPersonView.vue"),
-      meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
       path: "/usuarios/nuevo",
       name: "create-user",
       component: () => import("@/views/CreateUserView.vue"),

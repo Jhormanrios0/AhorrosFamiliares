@@ -65,7 +65,6 @@ async function refreshUser() {
     import("@/views/HomeView.vue");
     import("@/views/UsersAdminView.vue");
     import("@/views/CreateUserView.vue");
-    import("@/views/AddPersonView.vue");
     import("@/views/AddContributionView.vue");
   }
 }

@@ -23,32 +23,84 @@ const forbidden = ref(false);
 
 const selectedYear = ref(new Date().getFullYear());
 
-const personas = ref([]);
-const personaOptions = ref([]);
-const personaId = ref("");
+const users = ref([]);
+const userOptions = ref([]);
+// UI selects an Auth user. We map to persona_id internally for aportes FK.
+const selectedUserId = ref("");
 const valor = ref(null);
 const fecha = ref(null);
 
 const planOptions = ref([]);
-const personaFrequencyMap = ref(new Map());
+const userToPersonaId = ref(new Map());
+const userFrequencyMap = ref(new Map());
+const paidDatesSet = ref(new Set());
+const paidDatesLoading = ref(false);
+let rebuildSeq = 0;
 
 function planLabel(opt) {
   return `${opt.date} — ${formatCLP(opt.amount)}`;
 }
 
-const selectedFrequency = computed(() =>
-  normalizeFrequency(personaFrequencyMap.value.get(personaId.value))
+const selectedPersonaId = computed(
+  () => userToPersonaId.value.get(selectedUserId.value) ?? null
 );
 
-function rebuildPlanForSelected() {
+const selectedFrequency = computed(() =>
+  normalizeFrequency(userFrequencyMap.value.get(selectedUserId.value))
+);
+
+const noAvailableDates = computed(
+  () => Boolean(selectedUserId.value) && planOptions.value.length === 0
+);
+
+async function loadPaidDatesForPersonaYear({ personaId, year }) {
+  if (!personaId) return new Set();
+
+  const from = `${year}-01-01`;
+  const to = `${year}-12-31`;
+
+  paidDatesLoading.value = true;
+  try {
+    const { data, error } = await supabase
+      .from("aportes")
+      .select("fecha")
+      .eq("persona_id", personaId)
+      .gte("fecha", from)
+      .lte("fecha", to);
+    if (error) throw error;
+
+    const set = new Set();
+    for (const row of data ?? []) {
+      if (row?.fecha) set.add(String(row.fecha).slice(0, 10));
+    }
+    return set;
+  } finally {
+    paidDatesLoading.value = false;
+  }
+}
+
+async function rebuildPlanForSelected() {
+  const seq = ++rebuildSeq;
   const year = selectedYear.value;
   const freq = selectedFrequency.value;
+  const personaId = selectedPersonaId.value;
 
-  if (!personaId.value) {
+  if (!selectedUserId.value) {
     planOptions.value = [];
     fecha.value = null;
     valor.value = null;
+    paidDatesSet.value = new Set();
     return;
+  }
+
+  try {
+    const paid = await loadPaidDatesForPersonaYear({ personaId, year });
+    if (seq !== rebuildSeq) return;
+    paidDatesSet.value = paid;
+  } catch (e) {
+    if (seq !== rebuildSeq) return;
+    // Non-fatal: keep showing all dates if paid-date load fails.
+    paidDatesSet.value = new Set();
   }
 
   const plan = buildSavingsPlan({
@@ -56,7 +108,9 @@ function rebuildPlanForSelected() {
     frequency: freq,
     total: SAVINGS_TOTAL,
   });
-  planOptions.value = plan.map((p) => ({
+
+  const unpaidPlan = plan.filter((p) => !paidDatesSet.value.has(p.date));
+  planOptions.value = unpaidPlan.map((p) => ({
     value: p.date,
     label: planLabel(p),
     date: p.date,
@@ -84,7 +138,7 @@ async function goBack() {
   await router.push({ name: "personas" });
 }
 
-async function loadPeople() {
+async function loadUsers() {
   loading.value = true;
   pageError.value = null;
   formError.value = null;
@@ -101,46 +155,63 @@ async function loadPeople() {
     const y = Number(Array.isArray(yq) ? yq[0] : yq);
     selectedYear.value = Number.isFinite(y) ? y : new Date().getFullYear();
 
-    const preselect =
+    const preselectUserId =
+      typeof route.query.userId === "string" ? route.query.userId : "";
+    const preselectPersonaId =
       typeof route.query.personaId === "string" ? route.query.personaId : "";
 
-    const { data, error: peopleError } = await supabase
-      .from("personas")
-      .select("id,nombre,meta_anual,frecuencia")
-      .order("fecha_registro", { ascending: true });
-    if (peopleError) {
-      // Fallback if DB hasn't been migrated yet (missing column)
-      const { data: d2, error: e2 } = await supabase
-        .from("personas")
-        .select("id,nombre,meta_anual")
-        .order("fecha_registro", { ascending: true });
-      if (e2) throw e2;
-      personas.value = (d2 ?? []).map((p) => ({ ...p, frecuencia: "mensual" }));
-    } else {
-      personas.value = (data ?? []).map((p) => ({
-        ...p,
-        frecuencia: normalizeFrequency(p.frecuencia),
-      }));
-    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error("Sesión no válida.");
 
-    personaOptions.value = personas.value.map((p) => ({
-      value: p.id,
-      label: `${p.nombre} — ${normalizeFrequency(p.frecuencia)}`,
+    const res = await fetch("/api/users", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok)
+      throw new Error(payload?.error || "No se pudieron cargar usuarios.");
+
+    users.value = Array.isArray(payload?.users) ? payload.users : [];
+    // Only show users that have a linked persona (needed for aportes FK).
+    users.value = users.value.filter((u) => Boolean(u?.persona_id));
+
+    userOptions.value = users.value.map((u) => ({
+      value: u.user_id,
+      label: `${u.nombre || u.email || "(sin nombre)"}${
+        u.email ? ` — ${u.email}` : ""
+      } — ${normalizeFrequency(u.frecuencia)}`,
     }));
 
-    personaFrequencyMap.value = new Map(
-      personas.value.map((p) => [p.id, normalizeFrequency(p.frecuencia)])
+    userToPersonaId.value = new Map(
+      users.value.map((u) => [u.user_id, u.persona_id])
+    );
+    userFrequencyMap.value = new Map(
+      users.value.map((u) => [u.user_id, normalizeFrequency(u.frecuencia)])
     );
 
-    if (preselect) {
-      personaId.value = preselect;
-    } else if (!personaId.value && personas.value.length > 0) {
-      personaId.value = personas.value[0].id;
+    if (users.value.length === 0) {
+      selectedUserId.value = "";
+      planOptions.value = [];
+      fecha.value = null;
+      valor.value = null;
+      pageError.value = "Aún no hay usuarios creados para registrar aportes.";
+      return;
+    }
+
+    if (preselectUserId) {
+      selectedUserId.value = preselectUserId;
+    } else if (preselectPersonaId) {
+      const found = users.value.find(
+        (u) => u.persona_id === preselectPersonaId
+      );
+      selectedUserId.value = found?.user_id ?? "";
+    } else if (!selectedUserId.value && users.value.length > 0) {
+      selectedUserId.value = users.value[0].user_id;
     }
 
     rebuildPlanForSelected();
   } catch (e) {
-    pageError.value = e?.message ?? "No se pudieron cargar las personas.";
+    pageError.value = e?.message ?? "No se pudieron cargar los usuarios.";
   } finally {
     loading.value = false;
   }
@@ -148,8 +219,13 @@ async function loadPeople() {
 
 async function onSubmit() {
   formError.value = null;
-  if (!personaId.value) {
-    formError.value = "Selecciona una persona.";
+  if (!selectedUserId.value) {
+    formError.value = "Selecciona un usuario.";
+    return;
+  }
+  if (!selectedPersonaId.value) {
+    formError.value =
+      "Este usuario no tiene persona asociada para registrar aportes.";
     return;
   }
   if (!fecha.value) {
@@ -157,8 +233,13 @@ async function onSubmit() {
     return;
   }
 
+  if (paidDatesSet.value.has(fecha.value)) {
+    formError.value = "Esa fecha ya tiene un aporte registrado.";
+    return;
+  }
+
   const freq = normalizeFrequency(
-    personaFrequencyMap.value.get(personaId.value)
+    userFrequencyMap.value.get(selectedUserId.value)
   );
   if (
     !isAllowedContributionDate({
@@ -186,7 +267,7 @@ async function onSubmit() {
   saving.value = true;
   try {
     const { error: insertError } = await supabase.from("aportes").insert({
-      persona_id: personaId.value,
+      persona_id: selectedPersonaId.value,
       valor: expected,
       fecha: fecha.value,
     });
@@ -194,7 +275,7 @@ async function onSubmit() {
 
     await router.push({
       name: "person",
-      params: { id: personaId.value },
+      params: { id: selectedPersonaId.value },
       query: { year: String(selectedYear.value) },
     });
   } catch (e) {
@@ -204,9 +285,11 @@ async function onSubmit() {
   }
 }
 
-onMounted(loadPeople);
+onMounted(loadUsers);
 
-watch(personaId, rebuildPlanForSelected);
+watch(selectedUserId, () => {
+  void rebuildPlanForSelected();
+});
 
 watch(fecha, () => {
   if (!fecha.value) return;
@@ -250,10 +333,10 @@ watch(fecha, () => {
 
         <div class="contrib-grid">
           <label class="field">
-            <span>Persona</span>
+            <span>Usuario</span>
             <Multiselect
-              v-model="personaId"
-              :options="personaOptions"
+              v-model="selectedUserId"
+              :options="userOptions"
               valueProp="value"
               label="label"
               :canClear="false"
@@ -274,7 +357,14 @@ watch(fecha, () => {
               :canClear="false"
               :searchable="true"
             />
-            <small class="muted">Selecciona una fecha del plan</small>
+            <small v-if="paidDatesLoading" class="muted"
+              >Cargando fechas…</small
+            >
+            <small v-else-if="noAvailableDates" class="muted"
+              >Ya están registradas todas las fechas del plan para este
+              año.</small
+            >
+            <small v-else class="muted">Selecciona una fecha del plan</small>
           </label>
         </div>
 
@@ -290,7 +380,11 @@ watch(fecha, () => {
         </label>
 
         <div class="contrib-actions">
-          <button class="button" type="submit" :disabled="saving">
+          <button
+            class="button"
+            type="submit"
+            :disabled="saving || paidDatesLoading || !fecha || noAvailableDates"
+          >
             {{ saving ? "Guardando…" : "Guardar" }}
           </button>
         </div>

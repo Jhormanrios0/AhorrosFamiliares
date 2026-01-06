@@ -150,6 +150,9 @@ export async function fetchPersonas() {
   const { data, error } = await supabase
     .from("personas")
     .select("id,nombre,meta_anual,fecha_registro,user_id")
+    // Only personas linked to an Auth user should appear in the app.
+    // Personas created manually are considered legacy/redundant.
+    .not("user_id", "is", null)
     .order("fecha_registro", { ascending: true });
   if (error) throw error;
   // Meta fija del plan (defense-in-depth): ignorar valores antiguos en DB.

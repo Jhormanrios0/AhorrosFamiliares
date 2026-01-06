@@ -156,9 +156,6 @@ onMounted(async () => {
         >
           Exportar CSV
         </button>
-        <RouterLink class="button secondary" to="/persona/nueva"
-          >Nueva persona</RouterLink
-        >
         <RouterLink class="button" to="/aporte">Registrar aporte</RouterLink>
       </div>
     </div>

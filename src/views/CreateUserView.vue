@@ -15,7 +15,7 @@ const error = ref(null);
 const success = ref(null);
 
 const freqOptions = [
-  { value: "mensual", label: "Mensual (04 de cada mes)" },
+  { value: "mensual", label: "Mensual (05 de cada mes)" },
   { value: "quincenal", label: "Quincenal (05 y 20)" },
 ];
 
@@ -140,11 +140,6 @@ function goBack() {
       <button class="button" type="submit" :disabled="loading || !canSubmit">
         {{ loading ? "Creando…" : "Crear usuario" }}
       </button>
-
-      <p class="muted" style="margin: 12px 0 0">
-        Nota: esto siempre crea usuarios <strong>member</strong>. No existe
-        opción para crear admins desde la app.
-      </p>
     </form>
   </div>
 </template>

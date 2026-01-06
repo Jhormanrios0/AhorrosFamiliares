@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { supabase } from "@/lib/supabaseClient.js";
 
@@ -27,10 +27,9 @@ const modalBody = ref("");
 const modalConfirmLabel = ref("Confirmar");
 let modalAction = null;
 
-const myUserId = ref(null);
+const profileModalOpen = ref(false);
 
-const detailsOpen = ref(false);
-const detailsRef = ref(null);
+const myUserId = ref(null);
 
 const selected = computed(() => {
   return users.value.find((u) => u.user_id === selectedUserId.value) ?? null;
@@ -99,7 +98,7 @@ async function load() {
 
     if (users.value.length === 0) {
       selectedUserId.value = "";
-      detailsOpen.value = false;
+      profileModalOpen.value = false;
       applySelectedToForm();
       return;
     }
@@ -107,7 +106,7 @@ async function load() {
     const exists = users.value.some((u) => u.user_id === selectedUserId.value);
     if (!selectedUserId.value || !exists) {
       selectedUserId.value = users.value[0]?.user_id ?? "";
-      detailsOpen.value = false;
+      profileModalOpen.value = false;
     }
     applySelectedToForm();
   } catch (e) {
@@ -117,23 +116,14 @@ async function load() {
   }
 }
 
-function isOverlayScreen() {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(max-width: 519px)").matches;
-}
-
-async function selectUser(u) {
+function selectUser(u) {
   selectedUserId.value = u.user_id;
   applySelectedToForm();
-  detailsOpen.value = true;
-  if (isOverlayScreen()) {
-    await nextTick();
-    detailsRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  profileModalOpen.value = true;
 }
 
-function backToList() {
-  detailsOpen.value = false;
+function closeProfileModal() {
+  profileModalOpen.value = false;
 }
 
 function applySelectedToForm() {
@@ -251,8 +241,7 @@ async function deleteUser() {
     if (!res.ok) throw new Error(payload?.error || "No se pudo eliminar.");
 
     success.value = "Usuario eliminado.";
-    // After deletion we want to return to the full list (100% width).
-    detailsOpen.value = false;
+    profileModalOpen.value = false;
     selectedUserId.value = "";
     await load();
   } catch (e) {
@@ -287,238 +276,232 @@ onMounted(load);
     <p v-if="loading" class="muted">Cargando…</p>
     <p v-else-if="error" class="error">{{ error }}</p>
 
-    <div
-      v-else
-      class="grid-2 users-layout"
-      :class="{ 'details-open': detailsOpen }"
-    >
-      <div class="card users-list">
-        <div class="row" style="margin-bottom: 8px">
-          <strong>Listado</strong>
-          <button class="button secondary" type="button" @click="load">
-            Recargar
-          </button>
-        </div>
-
-        <p v-if="users.length === 0" class="muted">No hay usuarios.</p>
-
-        <div v-else class="stack users-list-scroll" style="margin-top: 0">
-          <button
-            v-for="u in users"
-            :key="u.user_id"
-            type="button"
-            class="list-item"
-            :class="{ active: u.user_id === selectedUserId }"
-            @click="selectUser(u)"
-          >
-            <div class="row" style="width: 100%">
-              <div>
-                <div>
-                  <strong>{{ u.nombre || "(sin nombre)" }}</strong>
-                </div>
-                <div class="muted" style="font-size: 0.9rem">
-                  {{ u.email || u.user_id }}
-                </div>
-                <div class="row" style="justify-content: flex-start; gap: 8px">
-                  <span class="badge">{{
-                    u.role === "admin" ? "admin" : "member"
-                  }}</span>
-                  <span class="badge">{{ u.frecuencia || "mensual" }}</span>
-                  <span class="badge" v-if="u.persona_id">persona ✓</span>
-                  <span class="badge" v-else>sin persona</span>
-                </div>
-              </div>
-              <span class="muted" style="white-space: nowrap">→</span>
-            </div>
-          </button>
-        </div>
+    <div v-else class="card users-list">
+      <div class="row" style="margin-bottom: 8px">
+        <strong>Listado</strong>
+        <button class="button secondary" type="button" @click="load">
+          Recargar
+        </button>
       </div>
 
-      <div class="stack users-details" ref="detailsRef">
-        <div class="card">
-          <div class="row users-details-top" style="margin-bottom: 8px">
-            <button class="button secondary" type="button" @click="backToList">
-              Volver al listado
-            </button>
-            <button class="button secondary" type="button" @click="load">
-              Recargar
-            </button>
+      <p v-if="users.length === 0" class="muted">No hay usuarios.</p>
+
+      <div v-else class="stack users-list-scroll" style="margin-top: 0">
+        <button
+          v-for="u in users"
+          :key="u.user_id"
+          type="button"
+          class="list-item"
+          :class="{ active: u.user_id === selectedUserId }"
+          @click="selectUser(u)"
+        >
+          <div class="row" style="width: 100%">
+            <div>
+              <div>
+                <strong>{{ u.nombre || "(sin nombre)" }}</strong>
+              </div>
+              <div class="muted" style="font-size: 0.9rem">
+                {{ u.email || u.user_id }}
+              </div>
+              <div class="row" style="justify-content: flex-start; gap: 8px">
+                <span class="badge">{{
+                  u.role === "admin" ? "admin" : "member"
+                }}</span>
+                <span class="badge">{{ u.frecuencia || "mensual" }}</span>
+                <span class="badge" v-if="u.persona_id">persona ✓</span>
+                <span class="badge" v-else>sin persona</span>
+              </div>
+            </div>
+            <span class="muted" style="white-space: nowrap">→</span>
           </div>
+        </button>
+      </div>
+    </div>
 
-          <div class="row" style="margin-bottom: 8px">
-            <strong>Perfil</strong>
-            <span class="badge" v-if="selected">{{ selected.role }}</span>
-          </div>
+    <div
+      v-if="profileModalOpen"
+      class="modal-backdrop profile-modal-backdrop"
+      @click.self="closeProfileModal"
+    >
+      <div class="modal profile-modal" role="dialog" aria-modal="true">
+        <div class="modal-header profile-modal-header">
+          <strong>Usuario</strong>
+          <button
+            class="button secondary"
+            type="button"
+            @click="closeProfileModal"
+          >
+            Cerrar
+          </button>
+        </div>
 
-          <p v-if="!selected" class="muted">Selecciona un usuario.</p>
+        <p v-if="!selected" class="muted" style="margin: 10px 0 0">
+          Selecciona un usuario.
+        </p>
 
-          <template v-else>
-            <div class="row" style="justify-content: flex-start; gap: 8px">
-              <span class="badge">{{ selected.frecuencia || "mensual" }}</span>
-              <span class="badge" v-if="selected.persona_id">persona ✓</span>
-              <span class="badge" v-else>sin persona</span>
+        <template v-else>
+          <div class="profile-modal-summary">
+            <div class="profile-modal-summary-main">
+              <div class="profile-modal-summary-name">
+                {{ selected.nombre || "(sin nombre)" }}
+              </div>
+              <div class="muted profile-modal-summary-email">
+                {{ selected.email || selected.user_id }}
+              </div>
+              <div class="profile-modal-summary-badges">
+                <span class="badge">{{
+                  selected.frecuencia || "mensual"
+                }}</span>
+                <span class="badge" v-if="selected.persona_id">persona ✓</span>
+                <span class="badge" v-else>sin persona</span>
+              </div>
             </div>
 
-            <label class="field">
-              <span>Nombre</span>
-              <input
-                v-model.trim="formNombre"
-                type="text"
-                autocomplete="off"
-                required
-              />
-            </label>
+            <span class="badge profile-modal-role">{{ selected.role }}</span>
+          </div>
 
-            <label class="field">
-              <span>Correo</span>
-              <input
-                v-model.trim="formEmail"
-                type="email"
-                autocomplete="off"
-                required
-              />
-              <small class="muted"
-                >Se actualiza en Auth (email del usuario)</small
+          <div class="profile-modal-grid grid-2">
+            <div class="card">
+              <div class="row" style="margin-bottom: 8px">
+                <strong>Perfil</strong>
+                <button class="button secondary" type="button" @click="load">
+                  Recargar
+                </button>
+              </div>
+
+              <label class="field">
+                <span>Nombre</span>
+                <input
+                  v-model.trim="formNombre"
+                  type="text"
+                  autocomplete="off"
+                  required
+                />
+              </label>
+
+              <label class="field">
+                <span>Correo</span>
+                <input
+                  v-model.trim="formEmail"
+                  type="email"
+                  autocomplete="off"
+                  required
+                />
+                <small class="muted"
+                  >Se actualiza en Auth (email del usuario)</small
+                >
+              </label>
+
+              <p v-if="success" class="muted">{{ success }}</p>
+              <p v-if="error" class="error">{{ error }}</p>
+
+              <div class="row profile-modal-actions">
+                <button
+                  class="button"
+                  type="button"
+                  :disabled="savingProfile || !canSaveProfile"
+                  @click="
+                    openConfirmModal({
+                      title: 'Confirmar cambios de perfil',
+                      body: `Se actualizará el nombre y correo de ${
+                        selected.email || selected.user_id
+                      }.`,
+                      confirmLabel: 'Guardar perfil',
+                      action: saveProfile,
+                    })
+                  "
+                >
+                  {{ savingProfile ? "Guardando…" : "Guardar perfil" }}
+                </button>
+
+                <button
+                  class="button danger"
+                  type="button"
+                  :disabled="!canDeleteSelected"
+                  @click="
+                    openConfirmModal({
+                      title: 'Eliminar usuario',
+                      body: `Se eliminará el usuario ${
+                        selected.email || selected.user_id
+                      } y sus datos asociados. Esta acción no se puede deshacer.`,
+                      confirmLabel: 'Eliminar',
+                      action: deleteUser,
+                    })
+                  "
+                >
+                  Eliminar usuario
+                </button>
+              </div>
+
+              <p
+                v-if="selected.role === 'admin'"
+                class="muted"
+                style="margin: 8px 0 0"
               >
-            </label>
-
-            <label class="field">
-              <span>Meta</span>
-              <input
-                :value="'1.100.000 (fija) – Ene a Nov'"
-                type="text"
-                readonly
-                disabled
-              />
-            </label>
-
-            <div class="row">
-              <span class="muted">User ID</span>
-              <span class="muted" style="font-size: 0.9rem">{{
-                selected.user_id
-              }}</span>
+                No se permite eliminar usuarios admin desde la app.
+              </p>
+              <p
+                v-else-if="myUserId && selected.user_id === myUserId"
+                class="muted"
+                style="margin: 8px 0 0"
+              >
+                No puedes eliminar tu propio usuario.
+              </p>
             </div>
 
-            <div class="row" v-if="selected.persona_id">
-              <span class="muted">Persona ID</span>
-              <span class="muted" style="font-size: 0.9rem">{{
-                selected.persona_id
-              }}</span>
-            </div>
+            <div class="card">
+              <div class="row" style="margin-bottom: 8px">
+                <strong>Contraseña</strong>
+                <span class="muted">Sección aparte</span>
+              </div>
 
-            <p v-if="success" class="muted">{{ success }}</p>
-            <p v-if="error" class="error">{{ error }}</p>
+              <label class="field">
+                <span>Nueva contraseña</span>
+                <input
+                  v-model="formPassword"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </label>
 
-            <button
-              class="button"
-              type="button"
-              :disabled="savingProfile || !canSaveProfile"
-              @click="
-                openConfirmModal({
-                  title: 'Confirmar cambios de perfil',
-                  body: `Se actualizará el nombre y correo de ${
-                    selected.email || selected.user_id
-                  }.`,
-                  confirmLabel: 'Guardar perfil',
-                  action: saveProfile,
-                })
-              "
-            >
-              {{ savingProfile ? "Guardando…" : "Guardar perfil" }}
-            </button>
+              <label class="field">
+                <span>Confirmar contraseña</span>
+                <input
+                  v-model="formPassword2"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Repite la contraseña"
+                />
+                <small class="muted">Debe coincidir con la anterior</small>
+              </label>
 
-            <div class="row" style="justify-content: flex-end; gap: 10px">
               <button
-                class="button danger"
+                class="button secondary"
                 type="button"
-                :disabled="!canDeleteSelected"
+                :disabled="savingPassword || !canSavePassword"
                 @click="
                   openConfirmModal({
-                    title: 'Eliminar usuario',
-                    body: `Se eliminará el usuario ${
+                    title: 'Confirmar cambio de contraseña',
+                    body: `Esto cambiará la contraseña del usuario ${
                       selected.email || selected.user_id
-                    } y sus datos asociados. Esta acción no se puede deshacer.`,
-                    confirmLabel: 'Eliminar',
-                    action: deleteUser,
+                    }.`,
+                    confirmLabel: 'Cambiar contraseña',
+                    action: savePassword,
                   })
                 "
               >
-                Eliminar usuario
+                {{ savingPassword ? "Cambiando…" : "Cambiar contraseña" }}
               </button>
             </div>
-
-            <p
-              v-if="selected.role === 'admin'"
-              class="muted"
-              style="margin: 8px 0 0"
-            >
-              No se permite eliminar usuarios admin desde la app.
-            </p>
-            <p
-              v-else-if="myUserId && selected.user_id === myUserId"
-              class="muted"
-              style="margin: 8px 0 0"
-            >
-              No puedes eliminar tu propio usuario.
-            </p>
-          </template>
-        </div>
-
-        <div class="card">
-          <div class="row" style="margin-bottom: 8px">
-            <strong>Contraseña</strong>
-            <span class="muted">Sección aparte</span>
           </div>
-
-          <p v-if="!selected" class="muted">Selecciona un usuario.</p>
-
-          <template v-else>
-            <label class="field">
-              <span>Nueva contraseña</span>
-              <input
-                v-model="formPassword"
-                type="password"
-                autocomplete="new-password"
-                placeholder="Mínimo 6 caracteres"
-              />
-            </label>
-
-            <label class="field">
-              <span>Confirmar contraseña</span>
-              <input
-                v-model="formPassword2"
-                type="password"
-                autocomplete="new-password"
-                placeholder="Repite la contraseña"
-              />
-              <small class="muted">Debe coincidir con la anterior</small>
-            </label>
-
-            <button
-              class="button secondary"
-              type="button"
-              :disabled="savingPassword || !canSavePassword"
-              @click="
-                openConfirmModal({
-                  title: 'Confirmar cambio de contraseña',
-                  body: `Esto cambiará la contraseña del usuario ${
-                    selected.email || selected.user_id
-                  }.`,
-                  confirmLabel: 'Cambiar contraseña',
-                  action: savePassword,
-                })
-              "
-            >
-              {{ savingPassword ? "Cambiando…" : "Cambiar contraseña" }}
-            </button>
-          </template>
-        </div>
+        </template>
       </div>
     </div>
 
     <div
       v-if="modalOpen"
-      class="modal-backdrop"
+      class="modal-backdrop confirm-modal-backdrop"
       @click.self="modalOpen = false"
     >
       <div class="modal" role="dialog" aria-modal="true">
@@ -550,40 +533,12 @@ onMounted(load);
 </template>
 
 <style scoped>
-.users-layout {
-  align-items: stretch;
-  display: flex;
-  gap: 12px;
-}
-
 .users-list {
-  flex: 1 1 100%;
   min-width: 0;
-  transition: flex-basis 220ms ease;
 }
 
-.users-details {
-  flex: 0 0 0;
-  min-width: 0;
-  max-width: 0;
-  opacity: 0;
-  pointer-events: none;
-  overflow: hidden;
-  transform: translateX(16px);
-  transition: opacity 220ms ease, transform 220ms ease;
-}
-
-.users-layout.details-open .users-list {
-  flex-basis: 50%;
-}
-
-.users-layout.details-open .users-details {
-  flex: 1 1 50%;
-  max-width: none;
-  opacity: 1;
-  pointer-events: auto;
-  overflow: visible;
-  transform: translateX(0);
+.list-item {
+  cursor: pointer;
 }
 
 .users-list-scroll {
@@ -592,41 +547,73 @@ onMounted(load);
   padding-right: 4px;
 }
 
-@media (max-width: 519px) {
-  .users-details {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    background: var(--bg);
-    padding: 16px;
-    overflow: auto;
-    transform: translateX(100%);
-    transition: transform 220ms ease;
-    opacity: 1;
-    pointer-events: auto;
-    max-width: none;
-  }
-
-  .users-layout.details-open .users-details {
-    transform: translateX(0);
-  }
-
-  .users-layout.details-open .users-list {
-    display: none;
-  }
-
-  .users-details-top {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--bg);
-    padding-bottom: 8px;
-  }
+.profile-modal {
+  width: min(760px, 100%);
+  padding: 16px;
 }
 
-@media (min-width: 860px) {
-  .users-details-top {
-    display: none;
-  }
+.profile-modal-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.profile-modal-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--primary-50) 0%, var(--surface) 55%);
+}
+
+.profile-modal-summary-main {
+  min-width: 0;
+}
+
+.profile-modal-summary-name {
+  font-weight: 800;
+}
+
+.profile-modal-summary-email {
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-modal-summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.profile-modal-role {
+  flex: none;
+}
+
+.profile-modal-grid {
+  margin-top: 12px;
+}
+
+.profile-modal-grid .card {
+  margin: 0;
+}
+
+.profile-modal-actions {
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-modal-backdrop {
+  z-index: 50;
+}
+
+.confirm-modal-backdrop {
+  z-index: 60;
 }
 </style>
